@@ -1,0 +1,42 @@
+name: Windows player
+on:
+  push:
+    paths:
+      - '.github/workflows/windows-player.yml'
+      - 'packaging/windows/**'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup toolchain install 1.98.1 --profile minimal
+      - name: Build Windows player
+        run: cargo build --locked --release --no-default-features -p warcraft-survivors
+      - name: Package player
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/player | Out-Null
+          Copy-Item target/release/warcraft-survivors.exe dist/player/
+          Copy-Item packaging/windows/* dist/player/
+          Copy-Item LICENSE* dist/player/
+          Copy-Item -Recurse third_party dist/player/third_party-licenses-and-source
+          Compress-Archive -Path dist/player/* -DestinationPath dist/Azeroth-Survivors-Windows-x64.zip
+          (Get-FileHash dist/Azeroth-Survivors-Windows-x64.zip -Algorithm SHA256).Hash | Set-Content dist/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Azeroth-Survivors-Windows-x64
+          path: dist/Azeroth-Survivors-Windows-x64.zip
+      - name: Publish download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "windows-${{ github.run_number }}"
+          gh release create $tag dist/Azeroth-Survivors-Windows-x64.zip dist/SHA256.txt --target '${{ github.sha }}' --title "Windows player ${{ github.run_number }}" --notes 'Extract the ZIP and open Play.cmd. First launch requires separate WoW 1.12.1 data; the launcher can perform the upstream data download. Built from source on Windows; gameplay has not been manually tested.'
